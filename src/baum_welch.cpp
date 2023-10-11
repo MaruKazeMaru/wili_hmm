@@ -26,18 +26,18 @@ void BaumWelch::set_hmm_parameters(wili_msgs::msg::HMM hmm){
     }
 
     // averages & covariance matrixs
-    avr = new float*[motion_num];
-    var = new float*[motion_num];
+    avrs = new float*[motion_num];
+    covars = new float*[motion_num];
     for(int i = 0; i < motion_num; ++i){
-        avr[i] = new float[2];
-        var[i] = new float[3];
+        avrs[i] = new float[2];
+        covars[i] = new float[3];
 
-        avr[i][0] = hmm.heatmaps[i].gaussian.avr_x;
-        avr[i][1] = hmm.heatmaps[i].gaussian.avr_y;
+        avrs[i][0] = hmm.heatmaps[i].gaussian.avr_x;
+        avrs[i][1] = hmm.heatmaps[i].gaussian.avr_y;
 
-        var[i][0] = hmm.heatmaps[i].gaussian.var_xx;
-        var[i][1] = hmm.heatmaps[i].gaussian.var_xy;
-        var[i][2] = hmm.heatmaps[i].gaussian.var_yy;
+        covars[i][0] = hmm.heatmaps[i].gaussian.var_xx;
+        covars[i][1] = hmm.heatmaps[i].gaussian.var_xy;
+        covars[i][2] = hmm.heatmaps[i].gaussian.var_yy;
     }
 }
 
@@ -47,12 +47,12 @@ BaumWelch::BaumWelch() : Node("baum_welch"){
 BaumWelch::~BaumWelch(){
     for(int i = 0; i < motion_num; ++i){
         delete tr_prob[i];
-        delete avr[i];
-        delete var[i];
+        delete avrs[i];
+        delete covars[i];
     }
     delete tr_prob;
-    delete avr;
-    delete var;
+    delete avrs;
+    delete covars;
 }
 
 bool try_init_hmm_parameters(std::shared_ptr<BaumWelch> node_ptr){
