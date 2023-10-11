@@ -25,4 +25,18 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+add_executable(baum_welch
+  src/baum_welch.cpp
+)
+
+ament_target_dependencies(baum_welch
+  rclcpp
+  wili_msgs
+)
+
+install(TARGETS
+  baum_welch
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()
