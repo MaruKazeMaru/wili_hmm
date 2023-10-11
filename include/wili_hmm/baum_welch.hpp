@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 ShinagwaKazemaru
+// SPDX-License-Identifier: MIT License
+
 #ifndef __BAUM_WELCH_HPP__
 #define __BAUM_WELCH_HPP__
 
