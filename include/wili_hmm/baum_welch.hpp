@@ -13,14 +13,13 @@ class BaumWelch : public rclcpp::Node
 {
     private:
     uint8_t motion_num;
+    float* init_prob;
     float** tr_prob;
     float** avrs;
     float** covars;
 
     float gaussian(uint8_t motion, float* where);
-    float** forward_prob(float** observation);
-    float** backward_prob(float** observation);
-    float update_once(float** observation);
+    float update_once(uint32_t observation_len, float** observation);
 
     public:
     std::shared_ptr<BaumWelch> node;
@@ -29,7 +28,11 @@ class BaumWelch : public rclcpp::Node
     ~BaumWelch();
 
     void set_hmm_parameters(wili_msgs::msg::HMM hmm);
-    void update(float** observation, float diff_liklihood_threshold);
+    void update(
+        uint32_t observation_len,
+        float** observation,
+        float diff_liklihood_threshold
+    );
 };
 
 bool try_init_hmm_parameters(std::shared_ptr<BaumWelch> node_ptr);
