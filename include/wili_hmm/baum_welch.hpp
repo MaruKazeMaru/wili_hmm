@@ -7,11 +7,13 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <wili_msgs/msg/hmm.hpp>
+#include <wili_msgs/msg/observation.hpp>
 #include <wili_msgs/srv/get_hmm.hpp>
 
 class BaumWelch : public rclcpp::Node
 {
     private:
+    // hmm
     uint8_t motion_num;
     float* init_prob;
     float** tr_prob;
@@ -21,9 +23,12 @@ class BaumWelch : public rclcpp::Node
     float gaussian(uint8_t motion, float* where);
     float update_once(uint32_t observation_len, float** observation);
 
-    public:
-    std::shared_ptr<BaumWelch> node;
+    // ros
+    std::shared_ptr<rclcpp::Subscription<wili_msgs::msg::Observation>> sub_observation;
+    
+    void cb_observation(const std::shared_ptr<wili_msgs::msg::Observation> msg);
 
+    public:
     BaumWelch();
     ~BaumWelch();
 
