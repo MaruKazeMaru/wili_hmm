@@ -9,7 +9,6 @@
 
 #include "../include/wili_hmm/baum_welch.hpp"
 
-// この関数OK
 // calculate Gaussian of each motion
 float BaumWelch::gaussian(uint8_t motion, float* where){
     float x_ = where[0] - avrs[motion][0];
@@ -37,8 +36,10 @@ float BaumWelch::update_once(uint32_t observation_len, float** observation){
     float** b = new float*[motion_num]; // gaussian cache
     for(uint8_t i = 0; i < motion_num; ++i){
         b[i] = new float[observation_len];
-        for(uint32_t t = 0; t <= t_max; ++t)
+        for(uint32_t t = 0; t <= t_max; ++t){
             b[i][t] = gaussian(i, observation[t]);
+            RCLCPP_INFO(get_logger(), "b[%u][%u]=%f", i, t, b[i][t]);
+        }
     }
 
 
@@ -124,6 +125,8 @@ float BaumWelch::update_once(uint32_t observation_len, float** observation){
             sum += new_tr_prob[i][j];
         }
 
+        RCLCPP_INFO(get_logger(), "sum_%u a=%f", i, sum);
+
         // normalize
         // sum_j a_ij = 1
         for(uint8_t j = 0; j < motion_num; ++j)
@@ -132,8 +135,10 @@ float BaumWelch::update_once(uint32_t observation_len, float** observation){
 
     // swap
     for(uint8_t i = 0; i < motion_num; ++i){
-        for(uint8_t j = 0; j < motion_num; ++j)
+        for(uint8_t j = 0; j < motion_num; ++j){
             tr_prob[i][j] = new_tr_prob[i][j];
+            RCLCPP_INFO(get_logger(), "new tr_prob[%u][%u]=%f", i, j, tr_prob[i][j]);
+        }
         delete new_tr_prob[i];
     }
     delete new_tr_prob;
@@ -148,6 +153,8 @@ float BaumWelch::update_once(uint32_t observation_len, float** observation){
     // ommit t=0 because c[t]=1
     for(uint32_t t = 1; t <= t_max; ++t)
         liklihood += logf(c[t]);
+
+    RCLCPP_INFO(get_logger(), "liklihood=%f", liklihood);
 
     // delete no use array
     delete c;
@@ -200,6 +207,8 @@ float BaumWelch::update_once(uint32_t observation_len, float** observation){
             new_avr[x] /= sum_gamma;
         }
 
+        RCLCPP_INFO(get_logger(), "new avrs[%u]=(%f,%f)", i, new_avr[0], new_avr[1]);
+
         // swap average
         for(uint8_t x = 0; x < 2; ++x)
             avrs[i][x] = new_avr[x];
@@ -209,6 +218,7 @@ float BaumWelch::update_once(uint32_t observation_len, float** observation){
         float new_cov_xx = 0; // covariance(x,x) (= var x)
         float new_cov_xy = 0; // covariance(x,y)
         float new_cov_yy = 0; // covariance(y,y) (= var y)
+        // detが0になっちゃう-->次のループで破綻 要理論再確認
         for(uint32_t t = 0; t <= t_max; ++t){
             float x_ = observation[t][0] - avrs[i][0];
             float y_ = observation[t][1] - avrs[i][1];
@@ -216,6 +226,8 @@ float BaumWelch::update_once(uint32_t observation_len, float** observation){
             new_cov_xy += gamma[t][i] * x_ * y_;
             new_cov_yy += gamma[t][i] * y_ * y_;
         }
+
+        RCLCPP_INFO(get_logger(), "new coavrs[%u]=(%f,%f,%f)", i, new_cov_xx, new_cov_xy, new_cov_yy);
 
         // set covariance
         covars[i][0] = new_cov_xx;
@@ -241,6 +253,35 @@ float BaumWelch::update_once(uint32_t observation_len, float** observation){
 }
 
 
+// create msg of /new_hmm topic with member variables
+wili_msgs::msg::HMM BaumWelch::create_msg(){
+    auto msg = wili_msgs::msg::HMM();
+
+    msg.motion_num = motion_num;
+
+    msg.init_prob = std::vector<float>(init_prob, init_prob + motion_num);
+
+    msg.tr_prob = std::vector<float>(motion_num * motion_num);
+    for(uint16_t i = 0; i < motion_num; ++i){
+        uint16_t d = i * motion_num;
+        for(uint16_t j = 0; j < motion_num; ++j)
+            msg.tr_prob[d + j] = tr_prob[i][j];
+    }
+
+    msg.heatmaps = std::vector<wili_msgs::msg::Heatmap>(motion_num);
+    for(uint8_t i = 0; i < motion_num; ++i){
+        msg.heatmaps[i].gaussian.avr_x = avrs[i][0];
+        msg.heatmaps[i].gaussian.avr_y = avrs[i][1];
+        msg.heatmaps[i].gaussian.var_xx = covars[i][0];
+        msg.heatmaps[i].gaussian.var_xy = covars[i][1];
+        msg.heatmaps[i].gaussian.var_yy = covars[i][2];
+    }
+
+    return msg;
+}
+
+
+// callback function of /observation topic
 void BaumWelch::cb_observation(const std::shared_ptr<wili_msgs::msg::Observation> msg){
     RCLCPP_INFO(get_logger(), "subscribed /observation");
 
@@ -258,6 +299,8 @@ void BaumWelch::cb_observation(const std::shared_ptr<wili_msgs::msg::Observation
         delete observation[t];
     delete observation;
 
+    pub_newhmm->publish(create_msg());
+
     return;
 }
 
@@ -268,6 +311,7 @@ BaumWelch::BaumWelch() : Node("baum_welch"){
         3,
         std::bind(&BaumWelch::cb_observation, this, std::placeholders::_1)
     );
+    this->pub_newhmm = this->create_publisher<wili_msgs::msg::HMM>("new_hmm", 3);
 }
 
 
@@ -299,18 +343,17 @@ void BaumWelch::set_hmm_parameters(wili_msgs::msg::HMM hmm){
 
     // transition probabilities
     tr_prob = new float*[motion_num];
-    for(int i = 0; i < motion_num; ++i){
+    for(uint16_t i = 0; i < motion_num; ++i){
         tr_prob[i] = new float[motion_num];
-        int d = i * motion_num;
-        for(int j = 0; j < motion_num; ++j){
+        uint16_t d = i * motion_num;
+        for(uint16_t j = 0; j < motion_num; ++j)
             tr_prob[i][j] = hmm.tr_prob[d + j];
-        }
     }
 
     // averages & covariance matrixs o Gaussian
     avrs = new float*[motion_num];
     covars = new float*[motion_num];
-    for(int i = 0; i < motion_num; ++i){
+    for(uint8_t i = 0; i < motion_num; ++i){
         avrs[i] = new float[2];
         covars[i] = new float[3];
 
@@ -337,7 +380,7 @@ void BaumWelch::update(
 
     // loop update untill logP(o) converge
     int update_cnt = 1;
-    for(; update_cnt < 100; ++update_cnt){
+    for(; update_cnt < 2; ++update_cnt){
         float new_likilihood = update_once(observation_len, observation);
         if(new_likilihood - likilihood <= diff_liklihood_threshold)
             break;
